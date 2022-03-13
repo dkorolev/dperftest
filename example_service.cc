@@ -1,18 +1,10 @@
 #include <iostream>
 
+#include "schema.h"
+
 #include "bricks/dflags/dflags.h"
 #include "blocks/http/api.h"
 #include "typesystem/serialization/json.h"
-
-CURRENT_STRUCT(RequestBody) {
-  CURRENT_FIELD(a, Optional<int32_t>);
-  CURRENT_FIELD(b, Optional<int32_t>);
-};
-
-CURRENT_STRUCT(ResponseBody) {
-  CURRENT_FIELD(c, int32_t);
-  CURRENT_CONSTRUCTOR(ResponseBody)(int32_t c) : c(c) {}
-};
 
 DEFINE_uint16(port, 8181, "The port to listen on.");
 
