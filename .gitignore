@@ -1,0 +1,6 @@
+# Build artefacts.
+Debug
+Release
+
+# For QT Creator.
+CMakeLists.txt.user
