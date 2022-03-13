@@ -10,10 +10,7 @@ find_package(Threads REQUIRED)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 
 include(FetchContent)
-FetchContent_Declare(
-  current
-  URL https://github.com/c5t/current/archive/ced2506fa18094cb15281671726420a4947fdcb9.zip
-)
+FetchContent_Declare(current URL https://github.com/c5t/current/archive/ced2506fa18094cb15281671726420a4947fdcb9.zip)
 FetchContent_MakeAvailable(current)
 include_directories(${current_SOURCE_DIR})
 
