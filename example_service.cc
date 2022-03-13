@@ -37,6 +37,6 @@ int main(int argc, char** argv) {
     r(ResponseBody(result));
   });
   std::cout << "Example server listening on port " << FLAGS_port << ". Try:" << std::endl;
-  std::cout << "curl http://localhost:" << FLAGS_port << " -d '{\"a\":3,\"b\":4}'  # => `{\"c\":7}`" << std::endl;
+  std::cout << "curl -s http://localhost:" << FLAGS_port << " -d '{\"a\":3,\"b\":4}'  # => `{\"c\":7}`" << std::endl;
   http.Join();
 }

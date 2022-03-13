@@ -1,6 +1,11 @@
-# Build artefacts.
+# Linux `Makefile`-based artefacts.
 Debug
 Release
+
+# For Visual Studio.
+CMakeSettings.json
+out
+.vs
 
 # For QT Creator.
 CMakeLists.txt.user
