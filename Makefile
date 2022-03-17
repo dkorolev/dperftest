@@ -1,7 +1,7 @@
 # NOTE(dkorolev): Yes, it is ugly to have a `Makefile` for a `cmake`-built project,
 #                 but why not keep both "standard" solutions working out of the box?
 
-.PHONY: debug release indent clean
+.PHONY: debug release indent install clean
 
 DEBUG_BUILD_DIR=Debug
 RELEASE_BUILD_DIR=Release
@@ -22,6 +22,9 @@ ${RELEASE_BUILD_DIR}:
 
 indent:
 	clang-format-10 -i *.cc
+
+install: ${RELEASE_BUILD_DIR}/dperftest
+	cp $< /usr/local/bin
 
 clean:
 	rm -rf "${DEBUG_BUILD_DIR}" "${RELEASE_BUILD_DIR}"
