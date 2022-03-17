@@ -1,5 +1,6 @@
 #include <iostream>
 #include <sstream>
+#include <mutex>
 #include <atomic>
 
 #include "bricks/dflags/dflags.h"
@@ -12,6 +13,7 @@
 DEFINE_string(url, "", "The URL to POST the queries to.");
 DEFINE_string(queries, "", "The input queries file, one POST body per line.");
 DEFINE_string(goldens, "", "The input golden results file, optional.");
+DEFINE_string(write_goldens, "", "The output file to write the goldens to, optional.");
 DEFINE_uint32(threads, 16, "The number of threads to use, 16 should be a safe default.");
 DEFINE_double(seconds, 5.0, "The number of seconds to run the test for.");
 DEFINE_uint32(max_errors, 5u, "The number of first erorneus results to report.");
@@ -57,21 +59,14 @@ inline std::string QPSReport(std::vector<Datapoint> const& datapoints) {
 
   if (total_queries > 0 && total_seconds > 0) {
     std::ostringstream oss;
-    oss << bold << green << current::strings::RoundDoubleToString(total_queries / total_seconds, 3) << "QPS" << reset;
+    oss << bold << green << current::strings::RoundDoubleToString(total_queries / total_seconds, 3) << " QPS" << reset;
     return oss.str();
   } else {
     return "no long enough stable run to compute QPS";
   }
 }
 
-int main(int argc, char** argv) {
-  ParseDFlags(&argc, &argv);
-
-#ifndef NDEBUG
-  std::cout << "Warning: running a " << bold << red << "DEBUG" << reset << " build. Suboptimal for performance testing."
-            << std::endl;
-#endif
-
+inline int Run() {
   if (FLAGS_url.empty()) {
     std::cout << "The `--url` parameter is required." << std::endl;
     return 1;
@@ -103,25 +98,54 @@ int main(int argc, char** argv) {
 
   std::chrono::microseconds const start_timestamp = SteadyNow();
 
-  for (uint32_t t = 0u; t < FLAGS_threads; ++t) {
-    threads.emplace_back([&]() {
-      ++atomic_active_threads;
-      while (true) {
-        size_t const i = atomic_index++;
-        if (i >= queries.size()) {
-          return;
-        }
-        size_t const actual_i = indexes[i];
-        results[actual_i] = std::move(current::strings::Trim(HTTP(POST(FLAGS_url, queries[actual_i])).body));
-      }
-      --atomic_active_threads;
-    });
-  }
+  std::mutex cerr_mutex;
+  bool error_logged = false;
 
   std::vector<Datapoint> datapoints;
 
   {
     current::ProgressLine report;
+
+    for (uint32_t t = 0u; t < FLAGS_threads; ++t) {
+      threads.emplace_back([&]() {
+        try {
+          ++atomic_active_threads;
+          while (!error_logged) {
+            size_t const i = atomic_index++;
+            if (i >= queries.size()) {
+              return;
+            }
+            size_t const actual_i = indexes[i];
+            results[actual_i] = std::move(current::strings::Trim(HTTP(POST(FLAGS_url, queries[actual_i])).body));
+          }
+        } catch (current::net::SocketException const& e) {
+          std::lock_guard<std::mutex> lock(cerr_mutex);
+          if (!error_logged) {
+            error_logged = true;
+            atomic_index = N;
+            report << "";
+            std::cerr << bold << red << "ERROR" << reset << ": Could not make the POST request." << std::endl;
+          }
+        } catch (std::exception const& e) {
+          std::lock_guard<std::mutex> lock(cerr_mutex);
+          if (!error_logged) {
+            error_logged = true;
+            atomic_index = N;
+            report << "";
+            std::cerr << bold << red << "ERROR" << reset << ": " << e.what() << std::endl;
+          }
+        }
+        --atomic_active_threads;
+      });
+    }
+
+    if (error_logged) {
+      for (uint32_t t = 0u; t < FLAGS_threads; ++t) {
+        threads[t].join();
+      }
+      return 1;
+    }
+
     while (atomic_index < queries.size()) {
       datapoints.push_back(
           Datapoint{SteadyNow(), std::min(static_cast<size_t>(atomic_index), N), atomic_active_threads});
@@ -129,42 +153,113 @@ int main(int argc, char** argv) {
       report << ProgressReport(start_timestamp, queries.size(), datapoints) << ", " << QPSReport(datapoints) << '.';
     }
   }
-  std::cout << "Done, " << QPSReport(datapoints) << " on " << bold << yellow << N << reset << " total queries."
-            << std::endl;
 
   for (uint32_t t = 0u; t < FLAGS_threads; ++t) {
     threads[t].join();
   }
 
-  if (FLAGS_goldens.empty()) {
-    std::cout << "Not comparing the results against the goldens as `--goldens` were not provided." << std::endl;
-  } else {
-    std::vector<std::string> const goldens =
-        current::strings::Split(current::FileSystem::ReadFileAsString(FLAGS_goldens), '\n');
-    if (goldens.size() != queries.size()) {
-      std::cout << "Warning: `--queries` contains " << queries.size() << " lines, while `--goldens` contains " << bold
-                << red << goldens.size() << reset << " lines." << std::endl;
-    }
-    size_t const M = std::min(queries.size(), goldens.size());
-    if (M) {
-      std::vector<size_t> errors;
-      size_t errors_count = 0u;
-      for (size_t i = 0u; i < M; ++i) {
-        if (current::strings::Trim(goldens[i]) != current::strings::Trim(results[i])) {
-          ++errors_count;
-          if (errors.size() < FLAGS_max_errors) {
-            errors.push_back(i + 1u);
+  if (!error_logged) {
+    std::cout << "Done, " << QPSReport(datapoints) << " on " << bold << yellow << N << reset << " total queries."
+              << std::endl;
+
+    if (FLAGS_goldens.empty()) {
+      if (FLAGS_write_goldens.empty()) {
+        std::cout << "Not comparing the results against the goldens as `--goldens` were not provided." << std::endl;
+      }
+    } else {
+      if (!FLAGS_write_goldens.empty()) {
+        std::cout << "Do not set both `--goldens` and `--write_goldens`." << std::endl;
+      }
+      std::vector<std::string> const goldens =
+          current::strings::Split(current::FileSystem::ReadFileAsString(FLAGS_goldens), '\n');
+      if (goldens.size() != queries.size()) {
+        std::cout << "Warning: `--queries` contains " << queries.size() << " lines, while `--goldens` contains " << bold
+                  << red << goldens.size() << reset << " lines." << std::endl;
+      }
+      size_t const M = std::min(queries.size(), goldens.size());
+      if (M) {
+        std::vector<size_t> errors;
+        size_t errors_count = 0u;
+        for (size_t i = 0u; i < M; ++i) {
+          if (current::strings::Trim(goldens[i]) != current::strings::Trim(results[i])) {
+            ++errors_count;
+            if (errors.size() < FLAGS_max_errors) {
+              errors.push_back(i + 1u);
+            }
           }
         }
-      }
-      if (!errors_count) {
-        std::cout << bold << green << "PASSED" << reset << ", results match on " << magenta << M << reset << " queries."
-                  << std::endl;
-      } else {
-        std::cout << bold << red << "FAILED" << reset << ", mismatch on " << red << errors_count << reset << " out of "
-                  << magenta << M << reset << " queries, deltas in queries " << cyan << JSON(errors) << reset << '.'
-                  << std::endl;
+        if (!errors_count) {
+          std::cout << bold << green << "PASSED" << reset << ", results match the goldens on " << magenta << M << reset
+                    << " queries." << std::endl;
+        } else {
+          std::cout << bold << red << "FAILED" << reset << ", mismatch on " << red << errors_count << reset
+                    << " out of " << magenta << M << reset << " queries, diff in line " << cyan << JSON(errors) << reset
+                    << '.' << std::endl;
+          return 1;
+        }
       }
     }
+
+    if (!FLAGS_write_goldens.empty()) {
+      if (!FLAGS_goldens.empty()) {
+        std::cout << "Do not set both `--goldens` and `--write_goldens`." << std::endl;
+      } else {
+        std::ofstream fo(FLAGS_write_goldens);
+        if (!fo.good()) {
+          std::cerr << bold << red << "ERROR" << reset << ": Can not write `" << FLAGS_write_goldens << "`."
+                    << std::endl;
+          return 1;
+        }
+        bool has_empty = false;
+        bool has_multiline = false;
+        for (std::string const& s : results) {
+          std::vector<std::string> golden = current::strings::Split(s, '\n');
+          if (golden.size() == 1u) {
+            fo << golden.front() << '\n';
+          } else if (golden.empty()) {
+            fo << "[EMPTY]\n";
+            has_empty = true;
+          } else {
+            fo << "[MULTILINE]" << current::strings::Join(golden, "\n");
+            has_multiline = true;
+          }
+        }
+        std::cout << "Saved " << bold << yellow << "golden" << reset << " results to `" << FLAGS_write_goldens << "`."
+                  << std::endl;
+        if (has_empty) {
+          std::cout << bold << yellow << "WARNING" << reset << ": Empty responses seen, replaced by `[EMPTY]`."
+                    << std::endl;
+        }
+        if (has_multiline) {
+          std::cout << bold << yellow << "WARNING" << reset
+                    << ": Multi-line responses seen, prepended by `[MULTILINE]` and printed via `\\n`." << std::endl;
+        }
+      }
+    }
+
+    return 0;
+  } else {
+    return 1;
+  }
+}
+
+int main(int argc, char** argv) {
+  ParseDFlags(&argc, &argv);
+
+#ifndef NDEBUG
+  std::cout << "Warning: running a " << bold << red << "DEBUG" << reset << " build. Suboptimal for performance testing."
+            << std::endl;
+#endif
+
+  try {
+    return Run();
+  } catch (current::net::SocketException const& e) {
+    std::cerr << bold << red << "ERROR" << reset << ": Could not make the POST request." << std::endl;
+  } catch (current::CannotReadFileException const& e) {
+    std::cerr << bold << red << "ERROR" << reset << ": Could not read `" << e.OriginalDescription() << "`."
+              << std::endl;
+  } catch (std::exception const& e) {
+    std::cerr << bold << red << "ERROR" << reset << ": " << e.what() << std::endl;
+    return -1;
   }
 }
