@@ -54,16 +54,19 @@ inline std::string QPSReport(std::vector<Datapoint> const& datapoints) {
     ++i1;
   }
 
-  size_t const total_queries = datapoints[i1].queries_processed - datapoints[i0].queries_processed;
-  double const total_seconds = 1e-6 * (datapoints[i1].timestamp - datapoints[i0].timestamp).count();
+  if (i1 > i0) {
+    size_t const total_queries = datapoints[i1].queries_processed - datapoints[i0].queries_processed;
+    double const total_seconds = 1e-6 * (datapoints[i1].timestamp - datapoints[i0].timestamp).count();
 
-  if (total_queries > 0 && total_seconds > 0) {
-    std::ostringstream oss;
-    oss << bold << green << current::strings::RoundDoubleToString(total_queries / total_seconds, 3) << " QPS" << reset;
-    return oss.str();
-  } else {
-    return "no long enough stable run to compute QPS";
+    if (total_queries > 0 && total_seconds > 0) {
+      std::ostringstream oss;
+      oss << bold << green << current::strings::RoundDoubleToString(total_queries / total_seconds, 3) << " QPS"
+          << reset;
+      return oss.str();
+    }
   }
+
+  return "no long enough stable run to compute QPS";
 }
 
 inline int Run() {
@@ -173,8 +176,9 @@ inline int Run() {
       std::vector<std::string> const goldens =
           current::strings::Split(current::FileSystem::ReadFileAsString(FLAGS_goldens), '\n');
       if (goldens.size() != queries.size()) {
-        std::cout << "Warning: `--queries` contains " << queries.size() << " lines, while `--goldens` contains " << bold
-                  << red << goldens.size() << reset << " lines." << std::endl;
+        std::cout << bold << yellow << "WARNING" << reset << ": `--queries` contain " << queries.size()
+                  << " lines, while `--goldens` contain " << bold << red << goldens.size() << reset << " lines."
+                  << std::endl;
       }
       size_t const M = std::min(queries.size(), goldens.size());
       if (M) {
@@ -220,7 +224,7 @@ inline int Run() {
             fo << "[EMPTY]\n";
             has_empty = true;
           } else {
-            fo << "[MULTILINE]" << current::strings::Join(golden, "\n");
+            fo << "[MULTILINE]" << current::strings::Join(golden, "\\n");
             has_multiline = true;
           }
         }
@@ -232,7 +236,8 @@ inline int Run() {
         }
         if (has_multiline) {
           std::cout << bold << yellow << "WARNING" << reset
-                    << ": Multi-line responses seen, prepended by `[MULTILINE]` and printed via `\\n`." << std::endl;
+                    << ": Multi-line responses seen, prepended by `[MULTILINE]` and joined in golden output via `\\n`."
+                    << std::endl;
         }
       }
     }
@@ -247,8 +252,8 @@ int main(int argc, char** argv) {
   ParseDFlags(&argc, &argv);
 
 #ifndef NDEBUG
-  std::cout << "Warning: running a " << bold << red << "DEBUG" << reset << " build. Suboptimal for performance testing."
-            << std::endl;
+  std::cout << bold << yellow << "WARNING" << reset << ": running a " << bold << red << "DEBUG" << reset
+            << " build. Suboptimal for performance testing." << std::endl;
 #endif
 
   try {
