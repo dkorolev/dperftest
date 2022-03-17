@@ -14,7 +14,7 @@ FetchContent_Declare(current URL https://github.com/c5t/current/archive/ced2506f
 FetchContent_MakeAvailable(current)
 include_directories(${current_SOURCE_DIR})
 
-file(GLOB SOURCE_FILES "*.cc")
+file(GLOB SOURCE_FILES "*.cc" "*/*.cc")
 file(GLOB HEADER_FILES "*.h")
 foreach(SOURCE_FILE ${SOURCE_FILES})
   get_filename_component(BINARY_FILE "${SOURCE_FILE}" NAME_WE)

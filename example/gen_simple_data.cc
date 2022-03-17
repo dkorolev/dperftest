@@ -1,4 +1,4 @@
-// Synopsis: ./Debug/gen -n 1000000 --output queries.txt --output_golden goldens.txt
+// Synopsis: ./Debug/gen_simple_data -n 1000000 --output queries.txt --output_golden goldens.txt
 
 #include <fstream>
 

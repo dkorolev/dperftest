@@ -6,7 +6,7 @@
 #include "blocks/http/api.h"
 #include "typesystem/serialization/json.h"
 
-DEFINE_uint16(port, 8181, "The port to listen on.");
+DEFINE_uint16(port, 3000, "The port to listen on.");
 
 int main(int argc, char** argv) {
   ParseDFlags(&argc, &argv);
