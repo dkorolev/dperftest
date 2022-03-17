@@ -1,4 +1,4 @@
-// Synopsis: ./Debug/gen_simple_data -n 1000000 --output queries.txt --output_golden goldens.txt
+// Synopsis: ./Release/gen_simple_data -n 100000 --output queries.txt --output_golden goldens.txt  # After `make release`.
 
 #include <fstream>
 

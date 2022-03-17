@@ -21,3 +21,23 @@ git clone https://github.com/dkorolev/dperftest.git
 ```
 
 The `make install` commands copies the freshly built `dperftest` binary into `/usr/local/bin`.
+
+## Example
+
+The `make release` command above builds a few more binaries. Among them is a simple example server, and a simple test data generator for it. To see `dperftest` in action, from the cloned `dperftest` directory, simply run:
+
+```
+./Release/gen_simple_data -n 100000 --output queries.txt --output_golden goldens.txt
+```
+
+Then:
+
+```
+./Release/example_simple_service
+```
+
+And finally, from the same directory, in a different terminal, while the example server:
+
+```
+dperftest --url localhost:3000 --queries queries.txt --goldens goldens.txt 
+```
