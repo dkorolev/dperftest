@@ -20,7 +20,7 @@ git clone https://github.com/dkorolev/dperftest.git
 (cd dperftest; sudo make install)
 ```
 
-The `make install` commands copies the freshly built `dperftest` binary into `/usr/local/bin`.
+The `make install` command copies the freshly built `dperftest` binary into `/usr/local/bin`.
 
 ## Example
 
@@ -41,3 +41,31 @@ And finally, from the same directory, in a different terminal, while the example
 ```
 dperftest --url localhost:3000 --queries queries.txt --goldens goldens.txt 
 ```
+
+## Example with OPA
+
+Similar to the section above, an example that mimics OPA can be run. After `cd dperftest`, run:
+
+```
+# Generate test queries and run the test.
+./Release/example_opa_gen -n 50000 > opa_queries.txt
+./Release/example_opa_stub
+
+# And then, from a separate terminal:
+dperftest --url http://localhost:8181/v1/data/myapi/allow --queries opa_queries.txt
+```
+
+The difference between this example and the one above is that instead of running the "stub", an OPA server can be run and benchmarked. To do so, once you have `opa` installed, execute the following two commands (the second one in a separate terminal):
+
+```
+# Important to add `-l error`, otherwise every OPA query
+# will result in a line printed to the terminal, hurting QPS 2x.
+opa run --server -l error
+
+# Upload the policy into the running OPA instance.
+# Run this command a few seconds after the previous one, to be sure.
+# The expected response is `{}`.
+curl -s -X PUT http://localhost:8181/v1/policies/myapi --data-binary @example_opa/policy.rego
+```
+
+After the OPA server is running, perftest it using the above `dperftest` command, with the same generated test data. You can also use `--write_goldens opa_goldens.txt` to save the results, and then confirm, with `--goldens opa_goldens.txt`, that the stub implementation and the real OPA server return the same results.
