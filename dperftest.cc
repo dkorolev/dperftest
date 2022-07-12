@@ -12,11 +12,12 @@
 
 DEFINE_string(url, "", "The URL to POST the queries to.");
 DEFINE_string(queries, "", "The input queries file, one POST body per line.");
+DEFINE_string(content_type, "", "Set to pass `-H Content-Type: ...`, ex. `application/json`.");
 DEFINE_string(goldens, "", "The input golden results file, optional.");
 DEFINE_string(write_goldens, "", "The output file to write the goldens to, optional.");
 DEFINE_uint32(threads, 16, "The number of threads to use, 16 should be a safe default.");
 DEFINE_double(seconds, 5.0, "The number of seconds to run the test for.");
-DEFINE_uint32(max_errors, 5u, "The number of first erorneus results to report.");
+DEFINE_uint32(max_errors, 5u, "The number of first erroneous results to report.");
 DEFINE_uint64(shuffle_random_seed, 42, "The random seed to use to randomize the order of queries.");
 
 using namespace current::vt100;
@@ -119,7 +120,8 @@ inline int Run() {
               return;
             }
             size_t const actual_i = indexes[i];
-            results[actual_i] = std::move(current::strings::Trim(HTTP(POST(FLAGS_url, queries[actual_i])).body));
+            results[actual_i] =
+                std::move(current::strings::Trim(HTTP(POST(FLAGS_url, queries[actual_i], FLAGS_content_type)).body));
           }
         } catch (current::net::SocketException const& e) {
           std::lock_guard<std::mutex> lock(cerr_mutex);
